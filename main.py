@@ -1,24 +1,26 @@
-from fastapi import FastAPI, Query
-from fastapi.responses import FileResponse
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import yt_dlp
 import os
 import uuid
 
-app = FastAPI()
+BOT_TOKEN = "PASTE_YOUR_BOT_TOKEN_HERE"  # ← Replace with your token
 
-@app.get("/")
-def root():
-    return {"message": "YouTube Downloader is running"}
+def start(update, context):
+    update.message.reply_text("👋 Send me a YouTube link. I’ll download it in 360p.")
 
-@app.get("/download")
-def download_video(url: str = Query(...), res: str = Query("360p")):
+def download_video(update, context):
+    url = update.message.text
+    if "youtube.com" not in url and "youtu.be" not in url:
+        update.message.reply_text("❌ Please send a valid YouTube link.")
+        return
+
+    update.message.reply_text("⏬ Downloading your video, please wait...")
+
     try:
-        video_id = str(uuid.uuid4())
-        output_path = f"{video_id}.mp4"
-
+        filename = f"{uuid.uuid4()}.mp4"
         ydl_opts = {
-            'format': f'bestvideo[height<={res[:-1]}]+bestaudio/best[height<={res[:-1]}]',
-            'outtmpl': output_path,
+            'format': 'bestvideo[height<=360]+bestaudio/best[height<=360]',
+            'outtmpl': filename,
             'merge_output_format': 'mp4',
             'quiet': True,
         }
@@ -26,7 +28,21 @@ def download_video(url: str = Query(...), res: str = Query("360p")):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        return FileResponse(path=output_path, filename=output_path, media_type='video/mp4')
+        update.message.reply_video(video=open(filename, 'rb'))
+        os.remove(filename)
 
     except Exception as e:
-        return {"error": str(e)}
+        update.message.reply_text(f"⚠️ Error: {e}")
+
+def main():
+    updater = Updater(BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, download_video))
+
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == '__main__':
+    main()
